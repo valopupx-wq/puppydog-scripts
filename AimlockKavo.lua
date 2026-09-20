@@ -1,7 +1,6 @@
--- AimlockKavo.lua
--- Kavo-style minimal UI for SimpleAim (Roblox executor)
+-- AimlockObsidian.lua
+-- Obsidian-style UI for SimpleAim (Roblox executor)
 -- made by puppydog
--- v2: lag-fixed (label throttle, part cache, BindToRenderStep)
 
 local Players          = game:GetService("Players")
 local RunService       = game:GetService("RunService")
@@ -12,21 +11,24 @@ local Workspace        = game:GetService("Workspace")
 local LP     = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- ─── THEME (Kavo) ───
 local Theme = {
-    Bg          = Color3.fromRGB(18, 18, 18),
-    BgAlt       = Color3.fromRGB(24, 24, 24),
-    Card        = Color3.fromRGB(26, 26, 26),
-    CardHover   = Color3.fromRGB(32, 32, 32),
-    Divider     = Color3.fromRGB(38, 38, 38),
-    Border      = Color3.fromRGB(45, 45, 45),
-    On          = Color3.fromRGB(90, 200, 120),
-    Off         = Color3.fromRGB(60, 60, 60),
-    Text        = Color3.fromRGB(235, 235, 235),
-    TextDim     = Color3.fromRGB(140, 140, 140),
-    TextSub     = Color3.fromRGB(95, 95, 95),
-    Warn        = Color3.fromRGB(230, 170, 60),
-    Danger      = Color3.fromRGB(220, 80, 80),
+    Bg          = Color3.fromRGB(10, 10, 12),
+    BgAlt       = Color3.fromRGB(16, 16, 20),
+    Sidebar     = Color3.fromRGB(13, 13, 17),
+    Card        = Color3.fromRGB(20, 20, 26),
+    CardHover   = Color3.fromRGB(26, 26, 34),
+    Border      = Color3.fromRGB(34, 34, 44),
+    BorderSoft  = Color3.fromRGB(28, 28, 36),
+    Accent      = Color3.fromRGB(168, 85, 247),
+    AccentSoft  = Color3.fromRGB(139, 92, 246),
+    AccentDim   = Color3.fromRGB(88, 40, 140),
+    On          = Color3.fromRGB(52, 211, 153),
+    Off         = Color3.fromRGB(45, 45, 58),
+    Text        = Color3.fromRGB(240, 240, 245),
+    TextDim     = Color3.fromRGB(150, 150, 175),
+    TextSub     = Color3.fromRGB(90, 90, 110),
+    Warn        = Color3.fromRGB(251, 191, 36),
+    Danger      = Color3.fromRGB(244, 63, 94),
     Font        = Enum.Font.Gotham,
     FontMed     = Enum.Font.GothamMedium,
     FontBold    = Enum.Font.GothamBold,
@@ -39,7 +41,7 @@ local function new(class, props)
 end
 
 local function corner(p, r)
-    return new("UICorner", {CornerRadius = UDim.new(0, r or 4), Parent = p})
+    return new("UICorner", {CornerRadius = UDim.new(0, r or 3), Parent = p})
 end
 
 local function stroke(p, col, t, tr)
@@ -52,7 +54,6 @@ local function stroke(p, col, t, tr)
     })
 end
 
--- ─── PARENT RESOLVER ───
 local function getParent()
     local ok, r = pcall(function() return gethui and gethui() end)
     if ok and r then
@@ -70,10 +71,8 @@ local function getParent()
     end
     return LP:WaitForChild("PlayerGui")
 end
-
 local parent = getParent()
 
--- ─── PARTS ───
 local PARTS = {
     { name = "HumanoidRootPart", aliases = {"HumanoidRootPart"} },
     { name = "Head",             aliases = {"Head"} },
@@ -91,38 +90,31 @@ local PARTS = {
 local PART_NAMES = {}
 for _, p in ipairs(PARTS) do table.insert(PART_NAMES, p.name) end
 
--- ─── STATE ───
 local SMOOTH_MIN, SMOOTH_MAX = 1, 99
-
 local State = {
     Enabled      = false,
-    Smooth       = 30,
+    Smooth       = 1,
     LockKey      = Enum.KeyCode.G,
     HideKey      = Enum.KeyCode.RightControl,
     UiHidden     = false,
-    SelectedPart = "Head",
+    SelectedPart = "HumanoidRootPart",
     LockedPlayer = nil,
     AwaitingKey  = false,
     Unloaded     = false,
+    ActiveTab    = "main",
 }
 
--- ─── CACHE (lag fix) ───
 local cache = {
-    lastTargetText    = nil,
-    lastTargetColor   = nil,
-    cachedTargetPart  = nil,
-    cachedTargetChar  = nil,
-    lastLabelRefresh  = 0,
+    lastTargetText   = nil,
+    lastTargetColor  = nil,
+    cachedTargetPart = nil,
+    cachedTargetChar = nil,
+    lastLabelRefresh = 0,
 }
 
--- ─── CONNECTIONS ───
 local Connections = {}
-local function track(conn)
-    table.insert(Connections, conn)
-    return conn
-end
+local function track(c) table.insert(Connections, c); return c end
 
--- ─── HELPERS ───
 local function isAlive(char)
     if not char or not char.Parent then return false end
     local h = char:FindFirstChildOfClass("Humanoid")
@@ -170,7 +162,6 @@ local function pickPlayerNearMouse()
     return best
 end
 
--- cached — reuse part reference until char or part changes
 local function getLockedPart()
     if not State.LockedPlayer then
         cache.cachedTargetPart = nil
@@ -201,214 +192,421 @@ local function shortKeyName(kc)
     return n
 end
 
--- ═══════════════════════════════════════
--- KAVO UI
--- ═══════════════════════════════════════
+local W = 420
+local H = 320
+local RAIL = 78
 
 local ScreenGui = new("ScreenGui", {
-    Name = "AimlockKavo",
+    Name = "AimlockObsidian",
     ResetOnSpawn = false,
     ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
     Parent = parent,
 })
 
+local Shadow = new("Frame", {
+    Size = UDim2.new(0, W, 0, H),
+    Position = UDim2.new(0.03, 3, 0.3, 3),
+    BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+    BackgroundTransparency = 0.7,
+    BorderSizePixel = 0,
+    ZIndex = 0,
+    Parent = ScreenGui,
+})
+corner(Shadow, 6)
+
 local Main = new("Frame", {
     Name = "Main",
-    Size = UDim2.new(0, 240, 0, 352),
-    Position = UDim2.new(0.02, 0, 0.3, 0),
+    Size = UDim2.new(0, W, 0, H),
+    Position = UDim2.new(0.03, 0, 0.3, 0),
     BackgroundColor3 = Theme.Bg,
     BorderSizePixel = 0,
     Active = true,
     Draggable = true,
+    ClipsDescendants = true,
+    ZIndex = 1,
     Parent = ScreenGui,
 })
 corner(Main, 6)
 stroke(Main, Theme.Border, 1, 0)
 
--- ─── header ───
-local Header = new("Frame", {
-    Name = "Header",
-    Size = UDim2.new(1, 0, 0, 40),
-    BackgroundColor3 = Theme.BgAlt,
+Main:GetPropertyChangedSignal("Position"):Connect(function()
+    Shadow.Position = Main.Position + UDim2.new(0, 3, 0, 3)
+end)
+
+local Rail = new("Frame", {
+    Name = "Rail",
+    Size = UDim2.new(0, RAIL, 1, 0),
+    BackgroundColor3 = Theme.Sidebar,
     BorderSizePixel = 0,
+    ZIndex = 2,
     Parent = Main,
+})
+corner(Rail, 6)
+new("Frame", {
+    Size = UDim2.new(0, 6, 1, 0),
+    Position = UDim2.new(1, -6, 0, 0),
+    BackgroundColor3 = Theme.Sidebar,
+    BorderSizePixel = 0,
+    ZIndex = 2,
+    Parent = Rail,
+})
+
+local Logo = new("Frame", {
+    Size = UDim2.new(0, 22, 0, 22),
+    Position = UDim2.new(0, 18, 0, 16),
+    BackgroundColor3 = Theme.Accent,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+    Parent = Rail,
+})
+corner(Logo, 3)
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Text = "A",
+    TextColor3 = Theme.Text,
+    Font = Theme.FontBold,
+    TextSize = 13,
+    ZIndex = 4,
+    Parent = Logo,
+})
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 10),
+    Position = UDim2.new(0, 0, 0, 42),
+    BackgroundTransparency = 1,
+    Text = "aimlock",
+    TextColor3 = Theme.TextDim,
+    Font = Theme.FontMed,
+    TextSize = 9,
+    ZIndex = 3,
+    Parent = Rail,
+})
+
+new("Frame", {
+    Size = UDim2.new(1, -24, 0, 1),
+    Position = UDim2.new(0, 12, 0, 62),
+    BackgroundColor3 = Theme.BorderSoft,
+    BorderSizePixel = 0,
+    ZIndex = 3,
+    Parent = Rail,
+})
+
+local tabs = {}
+local function makeTab(id, label, y)
+    local btn = new("TextButton", {
+        Size = UDim2.new(1, -16, 0, 32),
+        Position = UDim2.new(0, 8, 0, y),
+        BackgroundColor3 = Theme.Sidebar,
+        BorderSizePixel = 0,
+        Text = "",
+        AutoButtonColor = false,
+        ZIndex = 3,
+        Parent = Rail,
+    })
+    corner(btn, 4)
+
+    local bar = new("Frame", {
+        Name = "Bar",
+        Size = UDim2.new(0, 2, 0, 0),
+        Position = UDim2.new(0, 0, 0.5, 0),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+        ZIndex = 4,
+        Parent = btn,
+    })
+    corner(bar, 1)
+
+    local lbl = new("TextLabel", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Text = label,
+        TextColor3 = Theme.TextSub,
+        Font = Theme.FontMed,
+        TextSize = 11,
+        ZIndex = 4,
+        Parent = btn,
+    })
+
+    btn.MouseEnter:Connect(function()
+        if State.ActiveTab ~= id then
+            btn.BackgroundColor3 = Theme.Card
+            lbl.TextColor3 = Theme.TextDim
+        end
+    end)
+    btn.MouseLeave:Connect(function()
+        if State.ActiveTab ~= id then
+            btn.BackgroundColor3 = Theme.Sidebar
+            lbl.TextColor3 = Theme.TextSub
+        end
+    end)
+
+    tabs[id] = { btn = btn, bar = bar, lbl = lbl }
+    return btn
+end
+
+local MainTabBtn   = makeTab("main",   "MAIN",   76)
+local ConfigTabBtn = makeTab("config", "CONFIG", 112)
+
+local RailUnload = new("TextButton", {
+    Size = UDim2.new(1, -16, 0, 24),
+    Position = UDim2.new(0, 8, 1, -32),
+    BackgroundColor3 = Theme.Sidebar,
+    BorderSizePixel = 0,
+    Text = "exit",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontMed,
+    TextSize = 10,
+    AutoButtonColor = false,
+    ZIndex = 3,
+    Parent = Rail,
+})
+corner(RailUnload, 4)
+RailUnload.MouseEnter:Connect(function()
+    RailUnload.BackgroundColor3 = Theme.Danger
+    RailUnload.TextColor3 = Theme.Text
+end)
+RailUnload.MouseLeave:Connect(function()
+    RailUnload.BackgroundColor3 = Theme.Sidebar
+    RailUnload.TextColor3 = Theme.TextSub
+end)
+
+local Right = new("Frame", {
+    Name = "Right",
+    Size = UDim2.new(1, -RAIL, 1, 0),
+    Position = UDim2.new(0, RAIL, 0, 0),
+    BackgroundTransparency = 1,
+    ZIndex = 2,
+    Parent = Main,
+})
+
+local Header = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 44),
+    BackgroundColor3 = Theme.BgAlt,
+    BackgroundTransparency = 0.4,
+    BorderSizePixel = 0,
+    ZIndex = 2,
+    Parent = Right,
 })
 corner(Header, 6)
 new("Frame", {
     Size = UDim2.new(1, 0, 0, 6),
     Position = UDim2.new(0, 0, 1, -6),
     BackgroundColor3 = Theme.BgAlt,
+    BackgroundTransparency = 0.4,
     BorderSizePixel = 0,
+    ZIndex = 2,
     Parent = Header,
 })
 
-new("TextLabel", {
-    Size = UDim2.new(1, -90, 0, 14),
-    Position = UDim2.new(0, 12, 0, 6),
+local HeaderTitle = new("TextLabel", {
+    Size = UDim2.new(1, -100, 1, 0),
+    Position = UDim2.new(0, 16, 0, 0),
     BackgroundTransparency = 1,
-    Text = "aimlock",
+    Text = "MAIN",
     TextColor3 = Theme.Text,
-    Font = Theme.FontMed,
+    Font = Theme.FontBold,
     TextSize = 12,
     TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 3,
     Parent = Header,
 })
 
-new("TextLabel", {
-    Size = UDim2.new(1, -90, 0, 10),
-    Position = UDim2.new(0, 12, 0, 19),
-    BackgroundTransparency = 1,
-    Text = "made by puppydog",
-    TextColor3 = Theme.TextSub,
-    Font = Theme.Font,
-    TextSize = 9,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = Header,
-})
-
-local Dot = new("Frame", {
-    Size = UDim2.new(0, 6, 0, 6),
-    Position = UDim2.new(1, -46, 0.5, -3),
-    BackgroundColor3 = Theme.Off,
-    BorderSizePixel = 0,
-    Parent = Header,
-})
-corner(Dot, 3)
-
-local UnloadBtn = new("TextButton", {
-    Size = UDim2.new(0, 22, 0, 22),
-    Position = UDim2.new(1, -28, 0.5, -11),
+local StatusBadge = new("Frame", {
+    Size = UDim2.new(0, 54, 0, 20),
+    Position = UDim2.new(1, -68, 0.5, -10),
     BackgroundColor3 = Theme.Card,
     BorderSizePixel = 0,
-    Text = "×",
-    TextColor3 = Theme.TextDim,
-    Font = Theme.FontBold,
-    TextSize = 16,
-    AutoButtonColor = false,
+    ZIndex = 3,
     Parent = Header,
 })
-corner(UnloadBtn, 4)
-UnloadBtn.MouseEnter:Connect(function()
-    UnloadBtn.BackgroundColor3 = Theme.Danger
-    UnloadBtn.TextColor3 = Theme.Text
-end)
-UnloadBtn.MouseLeave:Connect(function()
-    UnloadBtn.BackgroundColor3 = Theme.Card
-    UnloadBtn.TextColor3 = Theme.TextDim
-end)
+corner(StatusBadge, 3)
+stroke(StatusBadge, Theme.BorderSoft, 1, 0)
+
+local StatusDot = new("Frame", {
+    Size = UDim2.new(0, 6, 0, 6),
+    Position = UDim2.new(0, 8, 0.5, -3),
+    BackgroundColor3 = Theme.Off,
+    BorderSizePixel = 0,
+    ZIndex = 4,
+    Parent = StatusBadge,
+})
+corner(StatusDot, 3)
+
+local StatusText = new("TextLabel", {
+    Size = UDim2.new(1, -20, 1, 0),
+    Position = UDim2.new(0, 18, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "OFF",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontMed,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 4,
+    Parent = StatusBadge,
+})
 
 new("Frame", {
-    Size = UDim2.new(1, -20, 0, 1),
-    Position = UDim2.new(0, 10, 0, 40),
-    BackgroundColor3 = Theme.Divider,
+    Size = UDim2.new(1, 0, 0, 1),
+    Position = UDim2.new(0, 0, 0, 44),
+    BackgroundColor3 = Theme.BorderSoft,
     BorderSizePixel = 0,
-    Parent = Main,
+    ZIndex = 2,
+    Parent = Right,
 })
 
--- ─── content ───
-local Content = new("Frame", {
-    Name = "Content",
-    Size = UDim2.new(1, -20, 1, -60),
-    Position = UDim2.new(0, 10, 0, 50),
-    BackgroundTransparency = 1,
-    Parent = Main,
-})
-new("UIListLayout", {
-    Padding = UDim.new(0, 8),
-    SortOrder = Enum.SortOrder.LayoutOrder,
-    Parent = Content,
-})
+local function makePage(name)
+    local p = new("Frame", {
+        Name = name,
+        Size = UDim2.new(1, -24, 1, -58),
+        Position = UDim2.new(0, 12, 0, 56),
+        BackgroundTransparency = 1,
+        Visible = false,
+        ZIndex = 3,
+        Parent = Right,
+    })
+    new("UIListLayout", {
+        Padding = UDim.new(0, 8),
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Parent = p,
+    })
+    return p
+end
 
--- ─── toggle row ───
-local ToggleRow = new("TextButton", {
-    Size = UDim2.new(1, 0, 0, 24),
-    BackgroundTransparency = 1,
+local MainPage   = makePage("MainPage")
+local ConfigPage = makePage("ConfigPage")
+
+local ToggleCard = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 50),
+    BackgroundColor3 = Theme.Card,
+    BorderSizePixel = 0,
     Text = "",
     AutoButtonColor = false,
     LayoutOrder = 1,
-    Parent = Content,
+    ZIndex = 3,
+    Parent = MainPage,
 })
-new("TextLabel", {
-    Size = UDim2.new(1, -60, 1, 0),
-    BackgroundTransparency = 1,
-    Text = "enabled",
-    TextColor3 = Theme.TextDim,
-    Font = Theme.Font,
-    TextSize = 11,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = ToggleRow,
-})
-local Switch = new("Frame", {
-    Size = UDim2.new(0, 32, 0, 16),
-    Position = UDim2.new(1, -32, 0.5, -8),
+corner(ToggleCard, 4)
+local toggleStroke = stroke(ToggleCard, Theme.BorderSoft, 1, 0)
+
+local ToggleAccent = new("Frame", {
+    Size = UDim2.new(0, 2, 1, -16),
+    Position = UDim2.new(0, 0, 0, 8),
     BackgroundColor3 = Theme.Off,
     BorderSizePixel = 0,
-    Parent = ToggleRow,
+    ZIndex = 4,
+    Parent = ToggleCard,
 })
-corner(Switch, 3)
-local SwitchKnob = new("Frame", {
-    Size = UDim2.new(0, 12, 0, 12),
-    Position = UDim2.new(0, 2, 0.5, -6),
-    BackgroundColor3 = Theme.TextDim,
-    BorderSizePixel = 0,
-    Parent = Switch,
-})
-corner(SwitchKnob, 2)
+corner(ToggleAccent, 1)
 
--- ─── target row ───
-local TargetRow = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 20),
-    BackgroundTransparency = 1,
-    LayoutOrder = 2,
-    Parent = Content,
-})
 new("TextLabel", {
-    Size = UDim2.new(0, 60, 1, 0),
+    Size = UDim2.new(1, -70, 0, 16),
+    Position = UDim2.new(0, 16, 0, 10),
     BackgroundTransparency = 1,
-    Text = "target",
+    Text = "aimlock",
+    TextColor3 = Theme.Text,
+    Font = Theme.FontBold,
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 4,
+    Parent = ToggleCard,
+})
+
+new("TextLabel", {
+    Size = UDim2.new(1, -70, 0, 12),
+    Position = UDim2.new(0, 16, 0, 28),
+    BackgroundTransparency = 1,
+    Text = "toggle to lock nearest target",
     TextColor3 = Theme.TextSub,
     Font = Theme.Font,
     TextSize = 10,
     TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = TargetRow,
+    ZIndex = 4,
+    Parent = ToggleCard,
 })
+
+local Switch = new("Frame", {
+    Size = UDim2.new(0, 34, 0, 18),
+    Position = UDim2.new(1, -48, 0.5, -9),
+    BackgroundColor3 = Theme.Off,
+    BorderSizePixel = 0,
+    ZIndex = 4,
+    Parent = ToggleCard,
+})
+corner(Switch, 3)
+
+local SwitchKnob = new("Frame", {
+    Size = UDim2.new(0, 12, 0, 12),
+    Position = UDim2.new(0, 3, 0.5, -6),
+    BackgroundColor3 = Theme.TextDim,
+    BorderSizePixel = 0,
+    ZIndex = 5,
+    Parent = Switch,
+})
+corner(SwitchKnob, 2)
+
+local TargetCard = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 34),
+    BackgroundColor3 = Theme.Card,
+    BorderSizePixel = 0,
+    LayoutOrder = 2,
+    ZIndex = 3,
+    Parent = MainPage,
+})
+corner(TargetCard, 4)
+stroke(TargetCard, Theme.BorderSoft, 1, 0)
+
+new("TextLabel", {
+    Size = UDim2.new(0, 60, 1, 0),
+    Position = UDim2.new(0, 14, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "TARGET",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontMed,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    ZIndex = 4,
+    Parent = TargetCard,
+})
+
 local TargetLbl = new("TextLabel", {
-    Size = UDim2.new(1, -60, 1, 0),
-    Position = UDim2.new(0, 60, 0, 0),
+    Size = UDim2.new(1, -84, 1, 0),
+    Position = UDim2.new(0, 70, 0, 0),
     BackgroundTransparency = 1,
     Text = "—",
     TextColor3 = Theme.TextDim,
     Font = Theme.FontMed,
     TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Right,
-    Parent = TargetRow,
+    ZIndex = 4,
+    Parent = TargetCard,
 })
+new("UIPadding", { PaddingRight = UDim.new(0, 14), Parent = TargetLbl })
 
--- ─── hitbox section ───
 new("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 14),
+    Size = UDim2.new(1, 0, 0, 12),
     BackgroundTransparency = 1,
-    Text = "hitbox part",
+    Text = "HITBOX PART",
     TextColor3 = Theme.TextSub,
-    Font = Theme.Font,
-    TextSize = 10,
+    Font = Theme.FontMed,
+    TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
     LayoutOrder = 3,
-    Parent = Content,
+    Parent = MainPage,
 })
 
 local PartHolder = new("Frame", {
-    Name = "PartHolder",
-    Size = UDim2.new(1, 0, 0, 28),
+    Size = UDim2.new(1, 0, 0, 34),
     BackgroundColor3 = Theme.Card,
     BorderSizePixel = 0,
     ClipsDescendants = false,
     LayoutOrder = 4,
     ZIndex = 5,
-    Parent = Content,
+    Parent = MainPage,
 })
 corner(PartHolder, 4)
-stroke(PartHolder, Theme.Border, 1, 0)
+stroke(PartHolder, Theme.BorderSoft, 1, 0)
 
 local PartHeader = new("TextButton", {
     Size = UDim2.new(1, 0, 1, 0),
@@ -418,68 +616,72 @@ local PartHeader = new("TextButton", {
     ZIndex = 6,
     Parent = PartHolder,
 })
+
 local PartCur = new("TextLabel", {
-    Size = UDim2.new(1, -30, 1, 0),
-    Position = UDim2.new(0, 12, 0, 0),
+    Size = UDim2.new(1, -40, 1, 0),
+    Position = UDim2.new(0, 14, 0, 0),
     BackgroundTransparency = 1,
     Text = State.SelectedPart,
     TextColor3 = Theme.Text,
-    Font = Theme.Font,
+    Font = Theme.FontMed,
     TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Left,
     ZIndex = 7,
     Parent = PartHeader,
 })
-new("TextLabel", {
-    Size = UDim2.new(0, 16, 1, 0),
-    Position = UDim2.new(1, -22, 0, 0),
+
+local Chevron = new("TextLabel", {
+    Size = UDim2.new(0, 20, 1, 0),
+    Position = UDim2.new(1, -30, 0, 0),
     BackgroundTransparency = 1,
-    Text = "+",
-    TextColor3 = Theme.TextDim,
-    Font = Theme.Font,
-    TextSize = 12,
+    Text = "▾",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontBold,
+    TextSize = 11,
     ZIndex = 7,
     Parent = PartHeader,
 })
 
 local PartList = new("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 0, 180),
-    Position = UDim2.new(0, 0, 1, 4),
+    Size = UDim2.new(1, 0, 0, 170),
+    Position = UDim2.new(0, 0, 1, 6),
     BackgroundColor3 = Theme.BgAlt,
     BorderSizePixel = 0,
     Visible = false,
     ZIndex = 50,
     ScrollBarThickness = 2,
-    ScrollBarImageColor3 = Theme.TextSub,
-    CanvasSize = UDim2.new(0, 0, 0, #PARTS * 22 + 6),
+    ScrollBarImageColor3 = Theme.Accent,
+    CanvasSize = UDim2.new(0, 0, 0, #PARTS * 22 + 8),
     Parent = PartHolder,
 })
 corner(PartList, 4)
-stroke(PartList, Theme.Border, 1, 0)
+stroke(PartList, Theme.Accent, 1, 0.4)
 new("UIListLayout", {
-    Padding = UDim.new(0, 0),
+    Padding = UDim.new(0, 1),
     SortOrder = Enum.SortOrder.LayoutOrder,
     Parent = PartList,
 })
 new("UIPadding", {
-    PaddingTop = UDim.new(0, 2),
-    PaddingBottom = UDim.new(0, 2),
+    PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+    PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
     Parent = PartList,
 })
+
 for i, name in ipairs(PART_NAMES) do
     local item = new("TextButton", {
-        Size = UDim2.new(1, -4, 0, 22),
+        Size = UDim2.new(1, -8, 0, 22),
         BackgroundColor3 = Theme.BgAlt,
         Text = "  " .. name,
         TextColor3 = Theme.TextDim,
         Font = Theme.Font,
-        TextSize = 11,
+        TextSize = 10,
         TextXAlignment = Enum.TextXAlignment.Left,
         AutoButtonColor = false,
         LayoutOrder = i,
         ZIndex = 51,
         Parent = PartList,
     })
+    corner(item, 3)
     item.MouseEnter:Connect(function()
         item.BackgroundColor3 = Theme.CardHover
         item.TextColor3 = Theme.Text
@@ -492,40 +694,46 @@ for i, name in ipairs(PART_NAMES) do
         State.SelectedPart = name
         PartCur.Text = name
         PartList.Visible = false
+        Chevron.Rotation = 0
         cache.cachedTargetPart = nil
         cache.cachedTargetChar = nil
     end)
 end
+
 PartHeader.MouseButton1Click:Connect(function()
     PartList.Visible = not PartList.Visible
+    TweenService:Create(Chevron, TweenInfo.new(0.18), {
+        Rotation = PartList.Visible and 180 or 0,
+    }):Play()
 end)
 
--- ─── smooth slider ───
-local SmoothRow = new("Frame", {
-    Size = UDim2.new(1, 0, 0, 34),
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12),
     BackgroundTransparency = 1,
+    Text = "SMOOTH",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontMed,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
     LayoutOrder = 5,
-    Parent = Content,
+    Parent = MainPage,
 })
 
-local SmoothLbl = new("TextLabel", {
-    Size = UDim2.new(1, -40, 0, 12),
+local SmoothRow = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 28),
     BackgroundTransparency = 1,
-    Text = "smooth",
-    TextColor3 = Theme.TextSub,
-    Font = Theme.Font,
-    TextSize = 10,
-    TextXAlignment = Enum.TextXAlignment.Left,
-    Parent = SmoothRow,
+    LayoutOrder = 6,
+    Parent = MainPage,
 })
+
 local SmoothVal = new("TextLabel", {
     Size = UDim2.new(0, 40, 0, 12),
     Position = UDim2.new(1, -40, 0, 0),
     BackgroundTransparency = 1,
     Text = tostring(State.Smooth),
-    TextColor3 = Theme.TextDim,
+    TextColor3 = Theme.Accent,
     Font = Theme.FontMed,
-    TextSize = 10,
+    TextSize = 11,
     TextXAlignment = Enum.TextXAlignment.Right,
     Parent = SmoothRow,
 })
@@ -533,33 +741,35 @@ local SmoothVal = new("TextLabel", {
 local Track = new("Frame", {
     Size = UDim2.new(1, 0, 0, 4),
     Position = UDim2.new(0, 0, 0, 20),
-    BackgroundColor3 = Theme.Divider,
+    BackgroundColor3 = Theme.Card,
     BorderSizePixel = 0,
     Parent = SmoothRow,
 })
 corner(Track, 2)
+stroke(Track, Theme.BorderSoft, 1, 0.4)
 
 local Fill = new("Frame", {
     Size = UDim2.new((State.Smooth - SMOOTH_MIN) / (SMOOTH_MAX - SMOOTH_MIN), 0, 1, 0),
-    BackgroundColor3 = Theme.TextDim,
+    BackgroundColor3 = Theme.Accent,
     BorderSizePixel = 0,
     Parent = Track,
 })
 corner(Fill, 2)
 
 local Knob = new("Frame", {
-    Size = UDim2.new(0, 10, 0, 10),
-    Position = UDim2.new((State.Smooth - SMOOTH_MIN) / (SMOOTH_MAX - SMOOTH_MIN), -5, 0.5, -5),
-    BackgroundColor3 = Theme.Text,
+    Size = UDim2.new(0, 11, 0, 11),
+    Position = UDim2.new((State.Smooth - SMOOTH_MIN) / (SMOOTH_MAX - SMOOTH_MIN), -5.5, 0.5, -5.5),
+    BackgroundColor3 = Color3.fromRGB(255, 255, 255),
     BorderSizePixel = 0,
     ZIndex = 2,
     Parent = Track,
 })
-corner(Knob, 5)
+corner(Knob, 6)
+stroke(Knob, Theme.Accent, 2, 0)
 
 local TrackHit = new("TextButton", {
-    Size = UDim2.new(1, 14, 0, 22),
-    Position = UDim2.new(0, -7, 0, 11),
+    Size = UDim2.new(1, 16, 0, 22),
+    Position = UDim2.new(0, -8, 0, 11),
     BackgroundTransparency = 1,
     Text = "",
     AutoButtonColor = false,
@@ -570,7 +780,7 @@ local TrackHit = new("TextButton", {
 local function updateSmoothVisual()
     local ratio = (State.Smooth - SMOOTH_MIN) / (SMOOTH_MAX - SMOOTH_MIN)
     Fill.Size = UDim2.new(ratio, 0, 1, 0)
-    Knob.Position = UDim2.new(ratio, -5, 0.5, -5)
+    Knob.Position = UDim2.new(ratio, -5.5, 0.5, -5.5)
     SmoothVal.Text = tostring(State.Smooth)
 end
 
@@ -593,54 +803,72 @@ TrackHit.MouseButton1Down:Connect(function()
     updateSmoothFromMouse()
 end)
 
--- ─── binds section ───
 new("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 14),
+    Size = UDim2.new(1, 0, 0, 12),
     BackgroundTransparency = 1,
-    Text = "binds",
+    Text = "KEYBINDS",
     TextColor3 = Theme.TextSub,
-    Font = Theme.Font,
-    TextSize = 10,
+    Font = Theme.FontMed,
+    TextSize = 9,
     TextXAlignment = Enum.TextXAlignment.Left,
-    LayoutOrder = 6,
-    Parent = Content,
+    LayoutOrder = 1,
+    Parent = ConfigPage,
 })
 
-local function makeKeybindRow(order, labelText, getter, setter)
+local function makeKeybindRow(order, labelText, hint, getter, setter)
     local row = new("TextButton", {
-        Size = UDim2.new(1, 0, 0, 24),
+        Size = UDim2.new(1, 0, 0, 32),
         BackgroundColor3 = Theme.Card,
         BorderSizePixel = 0,
         Text = "",
         AutoButtonColor = false,
         LayoutOrder = order,
-        Parent = Content,
+        Parent = ConfigPage,
     })
     corner(row, 4)
-    stroke(row, Theme.Border, 1, 0)
+    stroke(row, Theme.BorderSoft, 1, 0)
 
     new("TextLabel", {
-        Size = UDim2.new(1, -60, 1, 0),
-        Position = UDim2.new(0, 12, 0, 0),
+        Size = UDim2.new(1, -70, 0, 14),
+        Position = UDim2.new(0, 14, 0, 4),
         BackgroundTransparency = 1,
         Text = labelText,
-        TextColor3 = Theme.TextDim,
-        Font = Theme.Font,
+        TextColor3 = Theme.Text,
+        Font = Theme.FontMed,
         TextSize = 11,
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = row,
     })
+    new("TextLabel", {
+        Size = UDim2.new(1, -70, 0, 12),
+        Position = UDim2.new(0, 14, 0, 17),
+        BackgroundTransparency = 1,
+        Text = hint,
+        TextColor3 = Theme.TextSub,
+        Font = Theme.Font,
+        TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = row,
+    })
+
+    local keyBox = new("Frame", {
+        Size = UDim2.new(0, 60, 0, 20),
+        Position = UDim2.new(1, -74, 0.5, -10),
+        BackgroundColor3 = Theme.BgAlt,
+        BorderSizePixel = 0,
+        Parent = row,
+    })
+    corner(keyBox, 3)
+    stroke(keyBox, Theme.BorderSoft, 1, 0)
 
     local keyLbl = new("TextLabel", {
-        Size = UDim2.new(0, 60, 1, 0),
-        Position = UDim2.new(1, -70, 0, 0),
+        Size = UDim2.new(1, 0, 1, 0),
         BackgroundTransparency = 1,
         Text = shortKeyName(getter()),
-        TextColor3 = Theme.Text,
+        TextColor3 = Theme.Accent,
         Font = Theme.FontMed,
-        TextSize = 11,
-        TextXAlignment = Enum.TextXAlignment.Right,
-        Parent = row,
+        TextSize = 10,
+        Parent = keyBox,
     })
 
     row.MouseEnter:Connect(function()
@@ -665,7 +893,7 @@ local function makeKeybindRow(order, labelText, getter, setter)
                 setter(input.KeyCode)
                 keyLbl.Text = shortKeyName(input.KeyCode)
             end
-            keyLbl.TextColor3 = Theme.Text
+            keyLbl.TextColor3 = Theme.Accent
             State.AwaitingKey = false
             bindConn:Disconnect()
         end)
@@ -675,36 +903,104 @@ local function makeKeybindRow(order, labelText, getter, setter)
     return row, keyLbl
 end
 
-local LockRow   = makeKeybindRow(7, "lock key",  function() return State.LockKey end, function(k) State.LockKey = k end)
-local HideRow   = makeKeybindRow(8, "hide ui",   function() return State.HideKey end, function(k) State.HideKey = k end)
+local LockRow = makeKeybindRow(2, "lock key", "toggle aimlock on/off", function() return State.LockKey end, function(k) State.LockKey = k end)
+local HideRow = makeKeybindRow(3, "hide ui",  "show/hide window",       function() return State.HideKey end, function(k) State.HideKey = k end)
 
--- ─── unload button ───
-local UnloadRow = new("TextButton", {
-    Size = UDim2.new(1, 0, 0, 26),
+new("Frame", {
+    Size = UDim2.new(1, 0, 0, 2),
+    BackgroundTransparency = 1,
+    LayoutOrder = 4,
+    Parent = ConfigPage,
+})
+
+new("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 12),
+    BackgroundTransparency = 1,
+    Text = "ABOUT",
+    TextColor3 = Theme.TextSub,
+    Font = Theme.FontMed,
+    TextSize = 9,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    LayoutOrder = 5,
+    Parent = ConfigPage,
+})
+
+local About = new("Frame", {
+    Size = UDim2.new(1, 0, 0, 46),
     BackgroundColor3 = Theme.Card,
     BorderSizePixel = 0,
-    Text = "unload",
+    LayoutOrder = 6,
+    Parent = ConfigPage,
+})
+corner(About, 4)
+stroke(About, Theme.BorderSoft, 1, 0)
+
+new("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 14),
+    Position = UDim2.new(0, 14, 0, 8),
+    BackgroundTransparency = 1,
+    Text = "aimlock · obsidian edition",
+    TextColor3 = Theme.Text,
+    Font = Theme.FontMed,
+    TextSize = 11,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = About,
+})
+
+new("TextLabel", {
+    Size = UDim2.new(1, -20, 0, 12),
+    Position = UDim2.new(0, 14, 0, 26),
+    BackgroundTransparency = 1,
+    Text = "made by puppydog",
+    TextColor3 = Theme.Accent,
+    Font = Theme.Font,
+    TextSize = 10,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = About,
+})
+
+local UnloadRow = new("TextButton", {
+    Size = UDim2.new(1, 0, 0, 30),
+    BackgroundColor3 = Theme.Card,
+    BorderSizePixel = 0,
+    Text = "unload script",
     TextColor3 = Theme.TextDim,
     Font = Theme.FontMed,
     TextSize = 11,
     AutoButtonColor = false,
-    LayoutOrder = 9,
-    Parent = Content,
+    LayoutOrder = 7,
+    Parent = ConfigPage,
 })
 corner(UnloadRow, 4)
-stroke(UnloadRow, Theme.Border, 1, 0)
+stroke(UnloadRow, Theme.Danger, 1, 0.5)
 UnloadRow.MouseEnter:Connect(function()
-    UnloadRow.BackgroundColor3 = Theme.Danger
-    UnloadRow.TextColor3 = Theme.Text
+    TweenService:Create(UnloadRow, TweenInfo.new(0.15), {
+        BackgroundColor3 = Theme.Danger, TextColor3 = Theme.Text,
+    }):Play()
 end)
 UnloadRow.MouseLeave:Connect(function()
-    UnloadRow.BackgroundColor3 = Theme.Card
-    UnloadRow.TextColor3 = Theme.TextDim
+    TweenService:Create(UnloadRow, TweenInfo.new(0.15), {
+        BackgroundColor3 = Theme.Card, TextColor3 = Theme.TextDim,
+    }):Play()
 end)
 
--- ═══════════════════════════════════════
--- LOGIC
--- ═══════════════════════════════════════
+local function setTab(id)
+    State.ActiveTab = id
+    MainPage.Visible   = (id == "main")
+    ConfigPage.Visible = (id == "config")
+    HeaderTitle.Text = (id == "main") and "MAIN" or "CONFIG"
+
+    for tid, t in pairs(tabs) do
+        local active = (tid == id)
+        t.btn.BackgroundColor3 = active and Theme.Card or Theme.Sidebar
+        t.lbl.TextColor3 = active and Theme.Text or Theme.TextSub
+        local targetBarSize = active and UDim2.new(0, 2, 1, -8) or UDim2.new(0, 2, 0, 0)
+        TweenService:Create(t.bar, TweenInfo.new(0.18), {Size = targetBarSize}):Play()
+    end
+end
+
+MainTabBtn.MouseButton1Click:Connect(function() setTab("main") end)
+ConfigTabBtn.MouseButton1Click:Connect(function() setTab("config") end)
 
 local function refreshTargetLabel()
     local now = os.clock()
@@ -732,12 +1028,24 @@ local function refreshTargetLabel()
 end
 
 local function setSwitch(on)
-    local bg = on and Theme.On or Theme.Off
-    local knobCol = on and Theme.Text or Theme.TextDim
-    local knobPos = on and UDim2.new(1, -14, 0.5, -6) or UDim2.new(0, 2, 0.5, -6)
-    TweenService:Create(Switch, TweenInfo.new(0.15), {BackgroundColor3 = bg}):Play()
-    TweenService:Create(SwitchKnob, TweenInfo.new(0.15), {Position = knobPos, BackgroundColor3 = knobCol}):Play()
-    Dot.BackgroundColor3 = bg
+    local knobX = on and UDim2.new(1, -15, 0.5, -6) or UDim2.new(0, 3, 0.5, -6)
+    TweenService:Create(Switch, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+        BackgroundColor3 = on and Theme.Accent or Theme.Off,
+    }):Play()
+    TweenService:Create(SwitchKnob, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+        Position = knobX,
+        BackgroundColor3 = on and Color3.fromRGB(255, 255, 255) or Theme.TextDim,
+    }):Play()
+    TweenService:Create(ToggleAccent, TweenInfo.new(0.25), {
+        BackgroundColor3 = on and Theme.Accent or Theme.Off,
+    }):Play()
+    TweenService:Create(toggleStroke, TweenInfo.new(0.25), {
+        Transparency = on and 0.5 or 0,
+    }):Play()
+
+    StatusDot.BackgroundColor3 = on and Theme.On or Theme.Off
+    StatusText.Text = on and "ON" or "OFF"
+    StatusText.TextColor3 = on and Theme.On or Theme.TextSub
 end
 
 local function setEnabled(v)
@@ -760,6 +1068,7 @@ end
 local function setUiHidden(v)
     State.UiHidden = v
     Main.Visible = not v
+    Shadow.Visible = not v
     if v then PartList.Visible = false end
 end
 
@@ -769,7 +1078,7 @@ local function unload()
     State.Enabled = false
     State.LockedPlayer = nil
 
-    pcall(function() RunService:UnbindFromRenderStep("PuppyAimCam") end)
+    pcall(function() RunService:UnbindFromRenderStep("ObsidianAimCam") end)
 
     for _, c in ipairs(Connections) do
         if typeof(c) == "RBXScriptConnection" then
@@ -781,18 +1090,22 @@ local function unload()
     if ScreenGui then
         pcall(function() ScreenGui:Destroy() end)
     end
-    print("[puppydog] Kavo Aimlock unloaded")
+    print("[puppydog] Obsidian Aimlock unloaded")
 end
 
--- ─── UI events ───
-ToggleRow.MouseButton1Click:Connect(function()
+ToggleCard.MouseButton1Click:Connect(function()
     setEnabled(not State.Enabled)
+end)
+ToggleCard.MouseEnter:Connect(function()
+    TweenService:Create(ToggleCard, TweenInfo.new(0.12), {BackgroundColor3 = Theme.CardHover}):Play()
+end)
+ToggleCard.MouseLeave:Connect(function()
+    TweenService:Create(ToggleCard, TweenInfo.new(0.12), {BackgroundColor3 = Theme.Card}):Play()
 end)
 
 UnloadRow.MouseButton1Click:Connect(unload)
-UnloadBtn.MouseButton1Click:Connect(unload)
+RailUnload.MouseButton1Click:Connect(unload)
 
--- ─── global input ───
 track(UserInputService.InputBegan:Connect(function(input, gpe)
     if State.Unloaded then return end
     if State.AwaitingKey then return end
@@ -815,7 +1128,6 @@ track(UserInputService.InputEnded:Connect(function(input)
     end
 end))
 
--- ─── camera step (BindToRenderStep — priority สูงกว่า camera module) ───
 local function cameraStep()
     if State.Unloaded then return end
     if not State.Enabled then return end
@@ -828,7 +1140,8 @@ local function cameraStep()
     Camera.CFrame = Camera.CFrame:Lerp(desired, alpha)
 end
 
-RunService:BindToRenderStep("PuppyAimCam", Enum.RenderPriority.Camera.Value + 1, cameraStep)
+RunService:BindToRenderStep("ObsidianAimCam", Enum.RenderPriority.Camera.Value + 1, cameraStep)
 
 updateSmoothVisual()
-print("[puppydog] Kavo Aimlock loaded — made by puppydog")
+setTab("main")
+print("[puppydog] Obsidian Aimlock loaded — made by puppydog")
